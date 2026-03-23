@@ -85,12 +85,3 @@ def answer_query(query: str, system):
     answer = generate_answer(query, retrieved, system)
 
     return answer
-
-system = load_system()
-
-result = answer_query(
-    "What projects did Jacob work on?",
-    system
-)
-
-print(result)

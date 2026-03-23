@@ -184,5 +184,3 @@ def retrieve_chunks(file_path: str, output_path="chunks.pkl", meta_path="metadat
         pickle.dump(metadata, f)
 
     return new_chunks
-
-    return chunks
