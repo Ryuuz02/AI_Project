@@ -2,129 +2,63 @@ from pypdf import PdfReader
 from pathlib import Path
 import re
 import pickle
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-def build_chunks(
-    text: str,
-    min_para_len=300,
-    chunk_size=500,
-    overlap=100
-):
+def build_chunks(text: str, chunk_size=400, overlap=100):
     if not text.strip():
         return []
-    # -------------------------
-    # Step 1: Clean PDF noise
-    # -------------------------
-    text = text.replace('\r', '')
 
-    text = re.sub(r'\n{2,}', '<<<PARA>>>', text)
-    text = re.sub(r'\n\s*', ' ', text)
-    text = text.replace('<<<PARA>>>', '\n\n')
-    text = re.sub(r'[ \t]+', ' ', text).strip()
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=overlap,
+        separators=[
+            "\n\n",  # paragraphs
+            "\n",    # lines
+            ". ",    # sentences
+            " ",     # words
+            ""       # fallback
+        ]
+    )
 
-    # -------------------------
-    # Step 2: Paragraph handling
-    # -------------------------
-    raw_paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-
-    if len(raw_paragraphs) > 1:
-        paragraphs = raw_paragraphs
-    else:
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-
-        paragraphs = []
-        current = ""
-
-        for sentence in sentences:
-            if not current:
-                current = sentence
-                continue
-
-            if len(sentence) > 0 and len(current) > min_para_len and sentence[0].isupper():
-                paragraphs.append(current.strip())
-                current = sentence
-            else:
-                current += " " + sentence
-
-        if current:
-            paragraphs.append(current.strip())
-
-    # -------------------------
-    # Step 3: Split large paragraphs (WITH overlap)
-    # -------------------------
-    split_paragraphs = []
-
-    for para in paragraphs:
-        if len(para) <= chunk_size:
-            split_paragraphs.append(para)
-            continue
-
-        start = 0
-        while start < len(para):
-            end = start + chunk_size
-            chunk = para[start:end]
-            split_paragraphs.append(chunk.strip())
-
-            start += chunk_size - overlap
-
-    # -------------------------
-    # Step 4: Final chunking (WITH overlap)
-    # -------------------------
-    chunks = []
-    current_chunk = ""
-
-    for para in split_paragraphs:
-        if not current_chunk:
-            current_chunk = para
-            continue
-
-        if len(current_chunk) + len(para) <= chunk_size:
-            current_chunk += " " + para
-        else:
-            if current_chunk.strip():
-                chunks.append(current_chunk.strip())
-
-            overlap_text = current_chunk[-overlap:] if overlap > 0 else ""
-            current_chunk = overlap_text + " " + para
-
-    if current_chunk.strip():
-        chunks.append(current_chunk.strip())
-
-    return chunks
+    return splitter.split_text(text)
 
 def read_txt(file_path: str) -> str:
     with open(file_path, "r", encoding="utf-8") as f:
         return f.read()
 
-def read_pdf(file_path: str) -> str:
+def read_pdf(file_path: str):
     reader = PdfReader(file_path)
-    text = []
+    pages = []
 
-    for page in reader.pages:
+    for page_num, page in enumerate(reader.pages):
         page_text = page.extract_text()
         if page_text:
-            text.append(page_text)
+            pages.append((page_num, page_text))
 
-    return "\n".join(text)
-
+    return pages
 def load_document(file_path: str) -> dict:
     path = Path(file_path)
 
     if path.suffix == ".txt":
         content = read_txt(file_path)
+        pages = [(0, content)]  # treat as single page
         links = []
+
     elif path.suffix == ".pdf":
-        content = read_pdf(file_path)
+        pages = read_pdf(file_path)
+        content = "\n".join([p[1] for p in pages])  # optional
         links = extract_links_from_pdf(file_path)
+
     else:
         raise ValueError(f"Unsupported file type: {path.suffix}")
 
     return {
         "filename": path.name,
+        "pages": pages,   # 🔥 NEW
         "content": content,
         "length": len(content),
         "links": links
     }
-
 def extract_links_from_pdf(file_path: str):
     reader = PdfReader(file_path)
     links = []
@@ -163,7 +97,18 @@ def retrieve_chunks(file_path: str, output_path="chunks.pkl", meta_path="metadat
         return []
 
     # Build chunks
-    new_chunks = build_chunks(doc["content"])
+    chunks = []
+
+    for page_num, page_text in doc["pages"]:
+        page_chunks = build_chunks(page_text)
+
+        for i, chunk in enumerate(page_chunks):
+            chunks.append({
+                "text": chunk,
+                "source": doc["filename"],
+                "page": page_num,   # 🔥 NEW
+                "index": i          # index within page
+            })
 
     # Load existing chunks
     if Path(output_path).exists():
@@ -173,7 +118,7 @@ def retrieve_chunks(file_path: str, output_path="chunks.pkl", meta_path="metadat
         existing_chunks = []
 
     # Append
-    all_chunks = existing_chunks + new_chunks
+    all_chunks = existing_chunks + chunks
 
     with open(output_path, "wb") as f:
         pickle.dump(all_chunks, f)
@@ -183,4 +128,7 @@ def retrieve_chunks(file_path: str, output_path="chunks.pkl", meta_path="metadat
     with open(meta_path, "wb") as f:
         pickle.dump(metadata, f)
 
-    return new_chunks
+    return chunks
+
+# Use this to recreate chunks.pkl and metadata.pkl from the PDFs and TXTs in the project
+# retrieve_chunks("PDFs\cover_letter_guide.pdf")

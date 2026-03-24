@@ -12,6 +12,7 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 system = load_system()
+chat_history = []
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -51,8 +52,20 @@ async def upload_file(file: UploadFile = File(...)):
 
 @app.post("/query", response_model=QueryResponse)
 def query_endpoint(request: QueryRequest):
-    system = load_system()  # reload every time
-    answer = answer_query(request.query, system)
+    global chat_history
+
+    user_query = request.query
+
+    # Add user message
+    chat_history.append({"role": "user", "content": user_query})
+
+    system = load_system()
+
+    answer = answer_query(user_query, system, chat_history)
+
+    # Add assistant response
+    chat_history.append({"role": "assistant", "content": answer})
+
     return {"answer": answer}
 
 @app.get("/app", response_class=HTMLResponse)
