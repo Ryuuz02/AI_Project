@@ -1,86 +1,95 @@
-<body>
+<html>
     <head>
         <title>My Chat App</title>
         <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
         <link rel="stylesheet" href="/static/style.css">
     </head>
-    <div class="upload-area">
-        <input type="file" id="fileInput" />
-        <button onclick="uploadFile()">Upload</button>
-        <span id="upload-status"></span>
-    </div>
-    <div class="chat-container">
-        <div class="chat-box" id="chat-box">
-            <!-- Messages will appear here -->
+    <body>
+        <div class="app-container">
+                <div class="upload-area">
+                    <input type="file" id="fileInput" />
+                    <button onclick="uploadFile()">Upload</button>
+                    <span id="upload-status"></span>
+                </div>
+
+                <div class="chat-box" id="chat-box"></div>
+
+                <div class="input-area">
+                    <input id="query" placeholder="Type your message..." />
+                    <button onclick="sendQuery()">Send</button>
+                </div>
         </div>
 
-        <div class="input-area">
-            <input id="query" placeholder="Type your message..." />
-            <button onclick="sendQuery()">Send</button>
-        </div>
-    </div>
-
-    <script>
-        async function sendQuery() {
+        <script>
             const input = document.getElementById("query");
-            const chatBox = document.getElementById("chat-box");
-            const query = input.value.trim();
 
-            if (!query) return;
-
-            // Add user message
-            addMessage(query, "user");
-            input.value = "";
-
-            // Call API
-            const res = await fetch("/query", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ query })
+            input.addEventListener("keydown", function (event) {
+                if (event.key === "Enter") {
+                    event.preventDefault(); // prevents weird form behavior
+                    sendQuery();
+                }
             });
+            async function sendQuery() {
+                const input = document.getElementById("query");
+                const chatBox = document.getElementById("chat-box");
+                const query = input.value.trim();
 
-            const data = await res.json();
+                if (!query) return;
 
-            // Add AI response
-            addMessage(data.answer, "bot");
-        }
-        async function uploadFile() {
-            const fileInput = document.getElementById("fileInput");
-            const status = document.getElementById("upload-status");
+                // Add user message
+                addMessage(query, "user");
+                input.value = "";
 
-            if (!fileInput.files.length) {
-                status.innerText = "No file selected";
-                return;
+                // Call API
+                const res = await fetch("/query", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ query })
+                });
+
+                const data = await res.json();
+
+                // Add AI response
+                addMessage(data.answer, "bot");
+            }
+            async function uploadFile() {
+                const fileInput = document.getElementById("fileInput");
+                const status = document.getElementById("upload-status");
+
+                if (!fileInput.files.length) {
+                    status.innerText = "No file selected";
+                    return;
+                }
+
+                const file = fileInput.files[0];
+                const formData = new FormData();
+                formData.append("file", file);
+
+                status.innerText = "Uploading...";
+
+                const res = await fetch("/upload", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await res.json();
+                status.innerText = data.status;
             }
 
-            const file = fileInput.files[0];
-            const formData = new FormData();
-            formData.append("file", file);
+            function addMessage(text, sender) {
+                const chatBox = document.getElementById("chat-box");
 
-            status.innerText = "Uploading...";
+                const msg = document.createElement("div");
+                msg.classList.add("message", sender);
 
-            const res = await fetch("/upload", {
-                method: "POST",
-                body: formData
-            });
+                msg.innerText = text;
+                chatBox.appendChild(msg);
 
-            const data = await res.json();
-            status.innerText = data.status;
-        }
-
-        function addMessage(text, sender) {
-            const chatBox = document.getElementById("chat-box");
-
-            const msg = document.createElement("div");
-            msg.classList.add("message", sender);
-
-            msg.innerText = text;
-            chatBox.appendChild(msg);
-
-            // Auto scroll
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-    </script>
-</body>
+                // Auto scroll
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+        </script>
+    </body>
+</html>

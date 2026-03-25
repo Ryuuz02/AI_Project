@@ -1,8 +1,7 @@
 from pypdf import PdfReader
 from pathlib import Path
-import re
-import pickle
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from db import get_connection
 
 def build_chunks(text: str, chunk_size=400, overlap=100):
     if not text.strip():
@@ -11,13 +10,12 @@ def build_chunks(text: str, chunk_size=400, overlap=100):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=overlap,
-        separators=[
-            "\n\n",  # paragraphs
-            "\n",    # lines
-            ". ",    # sentences
-            " ",     # words
-            ""       # fallback
-        ]
+        separators = [
+        "\n\n",      # paragraphs
+        "\n",        # lines (important for lyrics)
+        r"(?<=\.) ", # sentences
+        " "
+]
     )
 
     return splitter.split_text(text)
@@ -85,15 +83,13 @@ def retrieve_chunks(file_path: str, output_path="chunks.pkl", meta_path="metadat
 
     filename = doc["filename"]
 
-    # Load metadata
-    if Path(meta_path).exists():
-        with open(meta_path, "rb") as f:
-            metadata = pickle.load(f)
-    else:
-        metadata = set()
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    if filename in metadata:
+    cursor.execute("SELECT 1 FROM documents WHERE filename = ?", (filename,))
+    if cursor.fetchone():
         print(f"{filename} already processed. Skipping.")
+        conn.close()
         return []
 
     # Build chunks
@@ -110,23 +106,26 @@ def retrieve_chunks(file_path: str, output_path="chunks.pkl", meta_path="metadat
                 "index": i          # index within page
             })
 
-    # Load existing chunks
-    if Path(output_path).exists():
-        with open(output_path, "rb") as f:
-            existing_chunks = pickle.load(f)
-    else:
-        existing_chunks = []
+    # Save document
+    cursor.execute(
+        "INSERT INTO documents (filename) VALUES (?)",
+        (filename,)
+    )
 
-    # Append
-    all_chunks = existing_chunks + chunks
+    # Save chunks
+    for chunk in chunks:
+        cursor.execute("""
+            INSERT INTO chunks (text, source, page, chunk_index)
+            VALUES (?, ?, ?, ?)
+        """, (
+            chunk["text"],
+            chunk["source"],
+            chunk["page"],
+            chunk["index"]
+        ))
 
-    with open(output_path, "wb") as f:
-        pickle.dump(all_chunks, f)
-
-    # Update metadata
-    metadata.add(filename)
-    with open(meta_path, "wb") as f:
-        pickle.dump(metadata, f)
+    conn.commit()
+    conn.close()
 
     return chunks
 

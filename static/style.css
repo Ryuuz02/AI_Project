@@ -4,28 +4,6 @@ body {
     background: #f0f0f0;
 }
 
-/* Full screen container */
-.chat-container {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-}
-
-/* Chat messages area */
-.chat-box {
-    flex: 1;
-    padding: 20px;
-    overflow-y: auto;
-}
-
-/* Input area at bottom */
-.input-area {
-    display: flex;
-    padding: 10px;
-    background: white;
-    border-top: 1px solid #ddd;
-}
-
 .input-area input {
     flex: 1;
     padding: 10px;
@@ -60,6 +38,14 @@ body {
     color: black;
     margin-right: auto;
 }
+/* Root layout */
+.app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* Top upload area */
 .upload-area {
     padding: 10px;
     background: white;
@@ -67,4 +53,19 @@ body {
     display: flex;
     gap: 10px;
     align-items: center;
+}
+
+/* Middle scrollable chat */
+.chat-box {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+/* Bottom input */
+.input-area {
+    display: flex;
+    padding: 10px;
+    background: white;
+    border-top: 1px solid #ddd;
 }

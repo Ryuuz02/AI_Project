@@ -6,3 +6,4 @@ TXTs/
 uploads/
 chunks.pkl
 metadata.pkl
+rag.db

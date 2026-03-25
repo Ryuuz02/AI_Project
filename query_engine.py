@@ -1,6 +1,7 @@
 from sentence_transformers import SentenceTransformer, CrossEncoder
 import faiss
-import pickle
+
+from db import get_connection
 from langchain_ollama import OllamaLLM
 
 
@@ -9,27 +10,51 @@ from langchain_ollama import OllamaLLM
 # Load everything ONCE
 # -------------------------
 def load_system():
-    # Load chunks
-    with open("chunks.pkl", "rb") as f:
-        chunk_objects = pickle.load(f)
-        texts = [c["text"] for c in chunk_objects]
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT text, source, page, chunk_index FROM chunks")
+    rows = cursor.fetchall()
+
+    chunk_objects = [
+        {
+            "text": r[0],
+            "source": r[1],
+            "page": r[2],
+            "index": r[3]
+        }
+        for r in rows
+    ]
+
+    conn.close()
+    texts = [c["text"] for c in chunk_objects]
+    
 
     # Embedding model
     model = SentenceTransformer('all-MiniLM-L6-v2')
     reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-
-    # Create embeddings
-    embeddings = model.encode(texts, convert_to_numpy=True)
-
-    # FAISS index
-    dimension = embeddings.shape[1]
-    index = faiss.IndexFlatL2(dimension)
-    index.add(embeddings)
+    if len(texts) > 0:
+        embeddings = model.encode(texts, convert_to_numpy=True)
+        dimension = embeddings.shape[1]
+        index = faiss.IndexFlatL2(dimension)
+        index.add(embeddings)
+    else:
+        index = None
+    
 
     # LLM
     llm = OllamaLLM(model="llama3.1:8b")
     # llm = OllamaLLM(model="qwen35-uncensored")
-
+    if len(texts) == 0:
+        return {
+            "chunks": [],
+            "texts": [],
+            "model": model,
+            "index": None,
+            "llm": llm,
+            "reranker": reranker
+        }
     return {
         "chunks": chunk_objects,
         "texts": texts,
@@ -44,6 +69,8 @@ def load_system():
 # Retrieval
 # -------------------------
 def query_faiss(query_text, system, top_k=3):
+    if system["index"] is None:
+        return []
     model = system["model"]
     index = system["index"]
     chunk_objects = system["chunks"]
@@ -150,7 +177,7 @@ def answer_query(query: str, system, chat_history):
 
     # Step 4: Sort for coherence
     final_chunks = sort_chunks(expanded_chunks)
-
+    print(len(final_chunks))
 
     answer = generate_answer(query, final_chunks, system, history_text)
 
@@ -180,4 +207,5 @@ User question:
 Rewritten question:
 """
     rewritten_query = llm.invoke(prompt).strip()
+    print(f"Rewritten query: {rewritten_query}")
     return rewritten_query

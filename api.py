@@ -6,13 +6,17 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from document_retrieval import retrieve_chunks
 import os
-import pickle
+from db import get_connection, init_db
+
+
 
 app = FastAPI()
+init_db()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 system = load_system()
 chat_history = []
+
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -29,11 +33,13 @@ def root():
 
 @app.get("/documents")
 def list_documents():
-    if not os.path.exists("metadata.pkl"):
-        return {"documents": []}
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    with open("metadata.pkl", "rb") as f:
-        docs = list(pickle.load(f))
+    cursor.execute("SELECT filename FROM documents")
+    docs = [row[0] for row in cursor.fetchall()]
+
+    conn.close()
 
     return {"documents": docs}
 
